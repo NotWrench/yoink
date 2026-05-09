@@ -26,6 +26,8 @@ pub enum InputPurpose {
     EditExclude(usize),
     EditIncludeOnly(usize),
     EditIncludeHidden(usize),
+    EditMaxSize,
+    EditDepth,
 }
 
 pub struct App {
@@ -46,9 +48,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(path: String) -> Self {
+    pub fn new(path: String) -> anyhow::Result<Self> {
         let mut app = Self {
-            config: config::load_config(),
+            config: config::load_config()?,
             path: dunce::canonicalize(Path::new(&path))
                 .unwrap_or_else(|_| Path::new(&path).to_path_buf())
                 .to_string_lossy()
@@ -66,7 +68,7 @@ impl App {
         if !app.profiles.is_empty() {
             app.profile_state.select(Some(0));
         }
-        app
+        Ok(app)
     }
 
     pub fn sync_profiles(&mut self) {
@@ -93,7 +95,7 @@ impl App {
     }
 
     pub fn save(&self) {
-        config::save_config(&self.config);
+        let _ = config::save_config(&self.config);
     }
 
     // --- Profile Navigation ---
@@ -267,16 +269,19 @@ impl App {
 
     pub fn submit_input(&mut self) {
         let val = self.input.trim().to_string();
-        if val.is_empty() {
-            self.cancel_input();
-            return;
-        }
 
         let purpose = if let Some(p) = self.input_purpose.clone() {
             p
         } else {
             return;
         };
+
+        // For sizing configs, we allow empty value (resets to None). Other strings we abort.
+        if val.is_empty() && !matches!(purpose, InputPurpose::EditMaxSize | InputPurpose::EditDepth)
+        {
+            self.cancel_input();
+            return;
+        }
 
         match purpose {
             InputPurpose::NewProfile => {
@@ -322,6 +327,36 @@ impl App {
                     }
                 }
                 self.mode = AppMode::ProfileList;
+            }
+            InputPurpose::EditMaxSize => {
+                if let Some(prof_name) = self.selected_profile_name().cloned() {
+                    if let Some(proj) = self.config.projects.get_mut(&self.path) {
+                        if let Some(prof) = proj.profiles.get_mut(&prof_name) {
+                            prof.max_file_size = if val.is_empty() {
+                                None
+                            } else {
+                                val.parse().ok()
+                            };
+                            self.save();
+                        }
+                    }
+                }
+                self.mode = AppMode::EditProfile;
+            }
+            InputPurpose::EditDepth => {
+                if let Some(prof_name) = self.selected_profile_name().cloned() {
+                    if let Some(proj) = self.config.projects.get_mut(&self.path) {
+                        if let Some(prof) = proj.profiles.get_mut(&prof_name) {
+                            prof.depth = if val.is_empty() {
+                                None
+                            } else {
+                                val.parse().ok()
+                            };
+                            self.save();
+                        }
+                    }
+                }
+                self.mode = AppMode::EditProfile;
             }
             _ => {
                 let mut mutated = false;

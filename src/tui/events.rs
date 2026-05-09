@@ -55,6 +55,37 @@ pub fn handle_key_events(key: KeyEvent, app: &mut App) {
             KeyCode::Up | KeyCode::Char('k') => app.prev_edit_item(),
             KeyCode::Tab => app.cycle_edit_list(true),
             KeyCode::BackTab => app.cycle_edit_list(false),
+            KeyCode::Char('s') => {
+                app.mode = AppMode::Input;
+                app.input_purpose = Some(InputPurpose::EditMaxSize);
+                if let Some(p) = app.selected_profile_name().cloned() {
+                    if let Some(prof) = app
+                        .config
+                        .projects
+                        .get(&app.path)
+                        .and_then(|pc| pc.profiles.get(&p))
+                    {
+                        app.input = prof
+                            .max_file_size
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+                    }
+                }
+            }
+            KeyCode::Char('p') => {
+                app.mode = AppMode::Input;
+                app.input_purpose = Some(InputPurpose::EditDepth);
+                if let Some(p) = app.selected_profile_name().cloned() {
+                    if let Some(prof) = app
+                        .config
+                        .projects
+                        .get(&app.path)
+                        .and_then(|pc| pc.profiles.get(&p))
+                    {
+                        app.input = prof.depth.map(|d| d.to_string()).unwrap_or_default();
+                    }
+                }
+            }
             KeyCode::Char('a') => {
                 app.mode = AppMode::Input;
                 app.input_purpose = match app.edit_list {

@@ -6,9 +6,17 @@ use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
+enum SkipReason {
+    TooLarge(u64),
+    Binary,
+    ReadError(String),
+}
+
 pub fn process_codebase(options: YoinkOptions) {
     let base_path = Path::new(&options.path);
     let mut builder = WalkBuilder::new(base_path);
+
+    builder.max_depth(options.depth);
 
     let mut overrides = OverrideBuilder::new(base_path);
     let mut has_overrides = false;
@@ -92,6 +100,7 @@ pub fn process_codebase(options: YoinkOptions) {
 
     let mut output_buffer = String::new();
     let mut file_count = 0;
+    let mut skipped: Vec<(String, SkipReason)> = Vec::new();
 
     // Processing Output
     for result in builder.build() {
@@ -111,18 +120,7 @@ pub fn process_codebase(options: YoinkOptions) {
                 }
             }
 
-            let buffer = match fs::read(path) {
-                Ok(b) => b,
-                Err(_) => continue,
-            };
-
-            if inspect(&buffer) == ContentType::BINARY {
-                continue;
-            }
-
-            let content = String::from_utf8_lossy(&buffer);
             let display_path = path.strip_prefix(base_path).unwrap_or(path);
-
             let path_str = if display_path.as_os_str().is_empty() {
                 path.file_name()
                     .unwrap_or_default()
@@ -132,6 +130,30 @@ pub fn process_codebase(options: YoinkOptions) {
                 display_path.to_string_lossy().replace('\\', "/")
             };
 
+            // Size Check
+            if let Ok(meta) = entry.metadata() {
+                if meta.len() > options.max_file_size as u64 {
+                    skipped.push((path_str, SkipReason::TooLarge(meta.len())));
+                    continue;
+                }
+            }
+
+            // Read Check
+            let buffer = match fs::read(path) {
+                Ok(b) => b,
+                Err(e) => {
+                    skipped.push((path_str, SkipReason::ReadError(e.to_string())));
+                    continue;
+                }
+            };
+
+            // Binary Check
+            if inspect(&buffer) == ContentType::BINARY {
+                skipped.push((path_str, SkipReason::Binary));
+                continue;
+            }
+
+            let content = String::from_utf8_lossy(&buffer);
             let lang_tag = crate::language::get_language_tag(path);
 
             // Accumulate into buffer
@@ -170,6 +192,23 @@ pub fn process_codebase(options: YoinkOptions) {
                 eprintln!("Fallback: run again with --out <FILE>");
             }
         }
+    }
+
+    // Print Warnings for Skipped Files
+    if !skipped.is_empty() {
+        eprintln!("\nSkipped {} files:", skipped.len());
+        for (p, reason) in skipped {
+            match reason {
+                SkipReason::TooLarge(size) => {
+                    eprintln!("  - {} (Too large: {} bytes)", p, size)
+                }
+                SkipReason::Binary => eprintln!("  - {} (Binary content)", p),
+                SkipReason::ReadError(err) => {
+                    eprintln!("  - {} (Read error: {})", p, err)
+                }
+            }
+        }
+        eprintln!();
     }
 
     // Print Stats Summary

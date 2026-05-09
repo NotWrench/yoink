@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -26,28 +27,34 @@ pub struct Profile {
     pub include_only: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub include_hidden: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_file_size: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<usize>,
 }
 
-pub fn get_config_path() -> PathBuf {
+pub fn get_config_path() -> Result<PathBuf> {
     let proj_dirs =
-        ProjectDirs::from("", "", "yoink").expect("Could not determine config directory");
+        ProjectDirs::from("", "", "yoink").context("Could not determine config directory")?;
     let config_dir = proj_dirs.config_dir();
-    fs::create_dir_all(config_dir).expect("Failed to create config directory");
-    config_dir.join("config.toml")
+    fs::create_dir_all(config_dir).context("Failed to create config directory")?;
+    Ok(config_dir.join("config.toml"))
 }
 
-pub fn load_config() -> Config {
-    let path = get_config_path();
+pub fn load_config() -> Result<Config> {
+    let path = get_config_path()?;
     if path.exists() {
-        let content = fs::read_to_string(path).unwrap_or_default();
-        toml::from_str(&content).unwrap_or_default()
+        let content = fs::read_to_string(path).context("Failed to read config.toml")?;
+        let config = toml::from_str(&content).context("Failed to parse config.toml")?;
+        Ok(config)
     } else {
-        Config::default()
+        Ok(Config::default())
     }
 }
 
-pub fn save_config(config: &Config) {
-    let path = get_config_path();
-    let content = toml::to_string_pretty(config).expect("Failed to serialize config");
-    fs::write(path, content).expect("Failed to write config file");
+pub fn save_config(config: &Config) -> Result<()> {
+    let path = get_config_path()?;
+    let content = toml::to_string_pretty(config).context("Failed to serialize config")?;
+    fs::write(path, content).context("Failed to write config file")?;
+    Ok(())
 }

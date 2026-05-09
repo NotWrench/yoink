@@ -23,6 +23,14 @@ pub struct Cli {
     #[arg(short = 'H', long, value_delimiter = ',')]
     pub include_hidden: Vec<String>,
 
+    /// Maximum file size in bytes (default: 10485760 / 10MB)
+    #[arg(long)]
+    pub max_file_size: Option<usize>,
+
+    /// Maximum directory traversal depth
+    #[arg(long)]
+    pub depth: Option<usize>,
+
     /// Output to a file instead of the clipboard
     #[arg(short, long)]
     pub out: Option<String>,
@@ -56,5 +64,7 @@ pub struct YoinkOptions {
     pub exclude: Vec<String>,
     pub include_only: Vec<String>,
     pub include_hidden: Vec<String>,
+    pub max_file_size: usize,
+    pub depth: Option<usize>,
     pub out: Option<String>,
 }

@@ -84,6 +84,16 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
     // Right Pane (Edit Mode)
     let is_edit_focused = app.mode == AppMode::EditProfile;
+
+    // Split right pane to hold a settings header + list chunks
+    let right_pane_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Settings Header
+            Constraint::Min(0),    // Lists
+        ])
+        .split(body_chunks[1]);
+
     let edit_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -91,7 +101,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             Constraint::Percentage(33),
             Constraint::Percentage(33),
         ])
-        .split(body_chunks[1]);
+        .split(right_pane_chunks[1]);
 
     let default_profile = config::Profile::default();
     let selected_profile = app
@@ -104,6 +114,32 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         })
         .unwrap_or(&default_profile);
 
+    // Render Settings Header
+    let size_str = selected_profile
+        .max_file_size
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Default (10MB)".to_string());
+    let depth_str = selected_profile
+        .depth
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "Unlimited".to_string());
+
+    let settings_text = format!(" Max Size: {} bytes | Depth: {} ", size_str, depth_str);
+    let settings_header = Paragraph::new(settings_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Settings ")
+                .border_style(Style::default().fg(if is_edit_focused {
+                    Color::Cyan
+                } else {
+                    Color::DarkGray
+                })),
+        )
+        .alignment(Alignment::Left);
+    f.render_widget(settings_header, right_pane_chunks[0]);
+
+    // Render Lists
     let render_edit_list = |f: &mut Frame,
                             area: Rect,
                             title: &str,
@@ -182,7 +218,7 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             "[↑/↓] Nav  [n] New  [r] Rename  [c] Clone  [d] Del  [b] Bind  [u] Unbind  [→/e] Edit  [q] Quit"
         }
         AppMode::EditProfile => {
-            "[↑/↓] Sel  [Tab] Switch  [a] Add  [e/Enter] Edit  [x] Del  [←/Esc] Back"
+            "[↑/↓] Sel  [Tab] Switch  [s] Size  [p] Depth  [a] Add  [e] Edit  [x] Del  [←/Esc] Back"
         }
         AppMode::Input => "[Enter] Save  [Esc] Cancel",
     };
@@ -205,6 +241,8 @@ pub fn ui(f: &mut Frame, app: &mut App) {
             Some(InputPurpose::EditExclude(_)) => " Edit Exclude ",
             Some(InputPurpose::EditIncludeOnly(_)) => " Edit Include Only ",
             Some(InputPurpose::EditIncludeHidden(_)) => " Edit Include Hidden ",
+            Some(InputPurpose::EditMaxSize) => " Max Size in bytes (Empty for default) ",
+            Some(InputPurpose::EditDepth) => " Max Depth (Empty for unlimited) ",
             None => " Input ",
         };
 
