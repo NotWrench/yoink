@@ -25,17 +25,19 @@ pub fn handle_key_events(key: KeyEvent, app: &mut App) {
                     app.input_purpose = Some(InputPurpose::DuplicateProfile(name));
                 }
             }
-            KeyCode::Char('d') => app.delete_selected_profile(),
-            KeyCode::Char('b') => {
-                if let Some(name) = app.selected_profile_name().cloned() {
-                    let proj = app.config.projects.entry(app.path.clone()).or_default();
-                    proj.bound_profile = Some(name);
-                    app.save();
+            KeyCode::Char('x') | KeyCode::Delete => {
+                if app.selected_profile_name().is_some() {
+                    app.mode = AppMode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('u') => {
-                if let Some(proj) = app.config.projects.get_mut(&app.path) {
-                    proj.bound_profile = None;
+            KeyCode::Char(' ') => {
+                if let Some(name) = app.selected_profile_name().cloned() {
+                    let proj = app.config.projects.entry(app.path.clone()).or_default();
+                    if proj.bound_profile.as_ref() == Some(&name) {
+                        proj.bound_profile = None;
+                    } else {
+                        proj.bound_profile = Some(name);
+                    }
                     app.save();
                 }
             }
@@ -72,7 +74,7 @@ pub fn handle_key_events(key: KeyEvent, app: &mut App) {
                     }
                 }
             }
-            KeyCode::Char('p') => {
+            KeyCode::Char('d') => {
                 app.mode = AppMode::Input;
                 app.input_purpose = Some(InputPurpose::EditDepth);
                 if let Some(p) = app.selected_profile_name().cloned() {
@@ -125,7 +127,17 @@ pub fn handle_key_events(key: KeyEvent, app: &mut App) {
                     }
                 }
             }
-            KeyCode::Char('x') => app.delete_selected_edit_item(),
+            KeyCode::Char('x') | KeyCode::Delete => app.delete_selected_edit_item(),
+            _ => {}
+        },
+        AppMode::ConfirmDelete => match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                app.delete_selected_profile();
+                app.mode = AppMode::ProfileList;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                app.mode = AppMode::ProfileList;
+            }
             _ => {}
         },
         AppMode::Input => match key.code {

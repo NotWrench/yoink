@@ -6,6 +6,7 @@ pub enum AppMode {
     ProfileList,
     EditProfile,
     Input,
+    ConfirmDelete,
 }
 
 #[derive(PartialEq, Clone, Copy)]

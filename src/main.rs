@@ -72,8 +72,18 @@ fn main() -> Result<()> {
     let project_config = config_data.projects.get(&abs_path);
     let active_profile_name = if let Some(p) = &cli_args.profile {
         Some(p.clone()) // Explicit flag wins
+    } else if let Some(pc) = project_config {
+        if pc.bound_profile.is_some() {
+            pc.bound_profile.clone() // Fallback to directory binding
+        } else if !pc.profiles.is_empty() {
+            let mut keys: Vec<_> = pc.profiles.keys().cloned().collect();
+            keys.sort();
+            Some(keys[0].clone()) // Fallback to first profile alphabetically
+        } else {
+            None
+        }
     } else {
-        project_config.and_then(|pc| pc.bound_profile.clone()) // Fallback to directory binding
+        None
     };
 
     let profile = if let Some(name) = active_profile_name {

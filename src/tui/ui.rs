@@ -25,11 +25,22 @@ pub fn ui(f: &mut Frame, app: &mut App) {
         .split(main_chunks[1]);
 
     // Header
-    let bound_name = app
-        .bound_profile_name()
+    let explicit_bound = app.bound_profile_name();
+    let fallback_bound = if explicit_bound.is_none() && !app.profiles.is_empty() {
+        app.profiles.first()
+    } else {
+        None
+    };
+
+    // Header
+    let header_bound_name = explicit_bound
+        .or(fallback_bound)
         .map(|s| s.as_str())
         .unwrap_or("None");
-    let header_text = format!(" Dir: {} | Bound Profile: [{}] ", app.path, bound_name);
+    let header_text = format!(
+        " Dir: {} | Default Profile: [{}] ",
+        app.path, header_bound_name
+    );
     let header = Paragraph::new(header_text)
         .block(
             Block::default()
@@ -45,14 +56,16 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     f.render_widget(header, main_chunks[0]);
 
     // Left Pane (Profiles)
-    let is_profile_focused = app.mode == AppMode::ProfileList;
+    let is_profile_focused = app.mode == AppMode::ProfileList || app.mode == AppMode::ConfirmDelete;
     let items: Vec<ListItem> = app
         .profiles
         .iter()
         .map(|p| {
             let mut text = p.clone();
-            if Some(p) == app.bound_profile_name() {
+            if Some(p) == explicit_bound {
                 text.push_str(" (bound)");
+            } else if Some(p) == fallback_bound {
+                text.push_str(" (default)");
             }
             ListItem::new(text)
         })
@@ -215,12 +228,13 @@ pub fn ui(f: &mut Frame, app: &mut App) {
     // Footer
     let footer_text = match app.mode {
         AppMode::ProfileList => {
-            "[↑/↓] Nav  [n] New  [r] Rename  [c] Clone  [d] Del  [b] Bind  [u] Unbind  [→/e] Edit  [q] Quit"
+            "[↑/↓] Nav  [n] New  [r] Rename  [c] Clone  [Del/x] Del  [Space] Toggle Bind  [→/Enter] Edit  [q] Quit"
         }
         AppMode::EditProfile => {
-            "[↑/↓] Sel  [Tab] Switch  [s] Size  [p] Depth  [a] Add  [e] Edit  [x] Del  [←/Esc] Back"
+            "[↑/↓] Sel  [Tab] Switch  [s] Size  [d] Depth  [a] Add  [Enter/e] Edit  [Del/x] Del  [←/Esc] Back"
         }
         AppMode::Input => "[Enter] Save  [Esc] Cancel",
+        AppMode::ConfirmDelete => "[y] Yes  [n/Esc] Cancel",
     };
     let footer = Paragraph::new(footer_text)
         .block(Block::default().borders(Borders::ALL))
@@ -258,6 +272,28 @@ pub fn ui(f: &mut Frame, app: &mut App) {
 
         f.render_widget(Clear, area);
         f.render_widget(input_block, area);
+    }
+
+    // Confirm Delete Popup
+    if app.mode == AppMode::ConfirmDelete {
+        let area = centered_rect(40, 20, size);
+        let name = app.selected_profile_name().cloned().unwrap_or_default();
+        let text = format!(
+            "\nAre you sure you want to delete profile '{}'?\n\nPress 'y' to confirm or 'n' to cancel.",
+            name
+        );
+        let confirm_block = Paragraph::new(text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Confirm Delete ")
+                    .border_style(Style::default().fg(Color::Red)),
+            )
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(Color::White));
+
+        f.render_widget(Clear, area);
+        f.render_widget(confirm_block, area);
     }
 }
 
