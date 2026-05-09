@@ -1,9 +1,12 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "yoink")]
 #[command(version, about = "Yoink your codebase into stdout for LLMs", long_about = None)]
 pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// The path to the codebase
     #[arg(default_value = ".")]
     pub path: String,
@@ -35,6 +38,16 @@ pub struct Cli {
     /// Bind the current directory to a profile so it runs automatically in the future
     #[arg(long)]
     pub bind_profile: Option<String>,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Open the TUI to manage profiles and directory bindings
+    Manage {
+        /// The path to manage bindings for
+        #[arg(default_value = ".")]
+        path: String,
+    },
 }
 
 #[derive(Clone, Default)]

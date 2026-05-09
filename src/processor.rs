@@ -27,15 +27,6 @@ pub fn process_codebase(options: YoinkOptions) {
         }
     }
 
-    // Process Explicit Hidden Inclusions
-    for inc in &options.include_hidden {
-        if let Err(e) = overrides.add(inc) {
-            eprintln!("Warning: Invalid include pattern '{}': {}", inc, e);
-        } else {
-            has_overrides = true;
-        }
-    }
-
     if has_overrides {
         if let Ok(override_matcher) = overrides.build() {
             builder.overrides(override_matcher);
@@ -47,7 +38,7 @@ pub fn process_codebase(options: YoinkOptions) {
         let include_hidden: Vec<String> = options
             .include_hidden
             .iter()
-            .map(|s| s.replace('\\', "/"))
+            .map(|s| s.replace('\\', "/").trim_end_matches('/').to_string())
             .collect();
         let closure_base_path = base_path.to_path_buf();
 
@@ -56,7 +47,9 @@ pub fn process_codebase(options: YoinkOptions) {
                 .path()
                 .strip_prefix(&closure_base_path)
                 .unwrap_or(entry.path());
+
             let rel_str = rel_path.to_string_lossy().replace('\\', "/");
+            let rel_str = rel_str.trim_matches('/');
 
             if rel_str.is_empty() {
                 return true;
@@ -71,10 +64,11 @@ pub fn process_codebase(options: YoinkOptions) {
                 return true;
             } // Allow standard visible files
 
-            // If it's hidden, allow it if it is a parent OR a child of our target included path
-            include_hidden
-                .iter()
-                .any(|h| rel_str.starts_with(h) || h.starts_with(&rel_str))
+            include_hidden.iter().any(|h| {
+                rel_str == *h
+                    || rel_str.starts_with(&format!("{}/", h))
+                    || h.starts_with(&format!("{}/", rel_str))
+            })
         });
     } else {
         builder.hidden(true);

@@ -7,7 +7,13 @@ use std::path::PathBuf;
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Config {
     #[serde(default)]
-    pub bindings: HashMap<String, String>,
+    pub projects: HashMap<String, ProjectConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
+pub struct ProjectConfig {
+    #[serde(default)]
+    pub bound_profile: Option<String>,
     #[serde(default)]
     pub profiles: HashMap<String, Profile>,
 }

@@ -4,11 +4,21 @@ use std::path::Path;
 mod cli;
 mod config;
 mod processor;
+mod tui;
 
-use cli::{Cli, YoinkOptions};
+use cli::{Cli, Command, YoinkOptions};
 
 fn main() {
     let cli_args = Cli::parse();
+
+    // Handle TUI Subcommand
+    if let Some(Command::Manage { path }) = cli_args.command {
+        if let Err(e) = tui::run(path) {
+            eprintln!("TUI Error: {}", e);
+        }
+        return;
+    }
+
     let mut config_data = config::load_config();
 
     let abs_path = dunce::canonicalize(Path::new(&cli_args.path))
@@ -23,11 +33,13 @@ fn main() {
             include_only: cli_args.include_only.clone(),
             include_hidden: cli_args.include_hidden.clone(),
         };
-        config_data
-            .profiles
-            .insert(profile_name.clone(), new_profile);
+        let proj = config_data.projects.entry(abs_path.clone()).or_default();
+        proj.profiles.insert(profile_name.clone(), new_profile);
         config::save_config(&config_data);
-        eprintln!("Saved profile '{}'", profile_name);
+        eprintln!(
+            "Saved profile '{}' for project '{}'",
+            profile_name, abs_path
+        );
 
         if cli_args.bind_profile.is_none() {
             return;
@@ -36,13 +48,15 @@ fn main() {
 
     // Handle --bind-profile command
     if let Some(profile_name) = &cli_args.bind_profile {
-        if !config_data.profiles.contains_key(profile_name) {
-            eprintln!("Error: Profile '{}' does not exist.", profile_name);
+        let proj = config_data.projects.entry(abs_path.clone()).or_default();
+        if !proj.profiles.contains_key(profile_name) {
+            eprintln!(
+                "Error: Profile '{}' does not exist in this project.",
+                profile_name
+            );
             return;
         }
-        config_data
-            .bindings
-            .insert(abs_path.clone(), profile_name.clone());
+        proj.bound_profile = Some(profile_name.clone());
         config::save_config(&config_data);
         eprintln!(
             "Bound directory '{}' to profile '{}'",
@@ -52,18 +66,19 @@ fn main() {
     }
 
     // Figure out which profile to use
+    let project_config = config_data.projects.get(&abs_path);
     let active_profile_name = if let Some(p) = &cli_args.profile {
         Some(p.clone()) // Explicit flag wins
     } else {
-        config_data.bindings.get(&abs_path).cloned() // Fallback to directory binding
+        project_config.and_then(|pc| pc.bound_profile.clone()) // Fallback to directory binding
     };
 
     let profile = if let Some(name) = active_profile_name {
-        if let Some(p) = config_data.profiles.get(&name) {
+        if let Some(p) = project_config.and_then(|pc| pc.profiles.get(&name)) {
             eprintln!("(Using profile: {})", name);
             p.clone()
         } else {
-            eprintln!("Warning: Bound profile '{}' not found in config.", name);
+            eprintln!("Warning: Profile '{}' not found for this project.", name);
             config::Profile::default()
         }
     } else {

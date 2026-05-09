@@ -7,8 +7,17 @@ edition = "2024"
 arboard = "3.6.1"
 clap = { version = "4.6.1", features = ["derive"] }
 content_inspector = "0.2.4"
+crossterm = "0.29.0"
 directories = "6.0.0"
 dunce = "1.0.5"
 ignore = "0.4.25"
+ratatui = "0.30.0"
 serde = { version = "1.0.228", features = ["derive"] }
 toml = "1.1.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
