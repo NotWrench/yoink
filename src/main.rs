@@ -3,6 +3,7 @@ use std::path::Path;
 
 mod cli;
 mod config;
+mod language;
 mod processor;
 mod tui;
 

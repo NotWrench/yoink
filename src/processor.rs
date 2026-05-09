@@ -132,7 +132,7 @@ pub fn process_codebase(options: YoinkOptions) {
                 display_path.to_string_lossy().replace('\\', "/")
             };
 
-            let lang_tag = get_language_tag(path);
+            let lang_tag = crate::language::get_language_tag(path);
 
             // Accumulate into buffer
             let _ = writeln!(output_buffer, "### {}", path_str);
@@ -177,70 +177,4 @@ pub fn process_codebase(options: YoinkOptions) {
         "{} files yoinked. ~{:.0} tokens ({} chars)",
         file_count, approx_tokens, char_count
     );
-}
-
-fn get_language_tag(path: &Path) -> &str {
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-
-    // Explicit file name matches
-    if file_name == "dockerfile" {
-        return "dockerfile";
-    }
-    if file_name == "makefile" {
-        return "makefile";
-    }
-    if file_name == "cmakelists.txt" {
-        return "cmake";
-    }
-    if file_name.ends_with("ignore") {
-        return "ignore";
-    }
-
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-    // Extension matches
-    match ext.to_lowercase().as_str() {
-        "rs" => "rust",
-        "js" | "cjs" | "mjs" => "javascript",
-        "ts" | "cts" | "mts" => "typescript",
-        "jsx" => "jsx",
-        "tsx" => "tsx",
-        "py" => "python",
-        "go" => "go",
-        "c" => "c",
-        "cpp" | "cc" | "cxx" | "h" | "hpp" => "cpp",
-        "cs" => "csharp",
-        "java" => "java",
-        "rb" => "ruby",
-        "php" => "php",
-        "swift" => "swift",
-        "kt" | "kts" => "kotlin",
-        "sh" | "bash" | "zsh" => "bash",
-        "bat" | "cmd" => "batch",
-        "ps1" => "powershell",
-        "sql" => "sql",
-        "html" | "htm" => "html",
-        "css" => "css",
-        "scss" | "sass" => "scss",
-        "json" => "json",
-        "yaml" | "yml" => "yaml",
-        "toml" => "toml",
-        "xml" => "xml",
-        "md" | "markdown" => "markdown",
-        "vue" => "vue",
-        "svelte" => "svelte",
-        "graphql" | "gql" => "graphql",
-        "dart" => "dart",
-        "lua" => "lua",
-        "zig" => "zig",
-        "el" => "lisp",
-        "clj" => "clojure",
-        "ex" | "exs" => "elixir",
-        "erl" | "hrl" => "erlang",
-        _ => ext, // Fallback to raw extension
-    }
 }
