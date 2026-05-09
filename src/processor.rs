@@ -74,7 +74,21 @@ pub fn process_codebase(options: YoinkOptions) {
         builder.hidden(true);
     }
 
-    let include_only = options.include_only.clone();
+    let mut has_includes = false;
+    let mut inc_builder = OverrideBuilder::new(base_path);
+    for inc in &options.include_only {
+        if let Err(e) = inc_builder.add(inc) {
+            eprintln!("Warning: Invalid include pattern '{}': {}", inc, e);
+        } else {
+            has_includes = true;
+            let _ = inc_builder.add(&format!("{}/**", inc.trim_end_matches('/')));
+        }
+    }
+    let inc_matcher = if has_includes {
+        inc_builder.build().ok()
+    } else {
+        None
+    };
 
     let mut output_buffer = String::new();
     let mut file_count = 0;
@@ -91,10 +105,10 @@ pub fn process_codebase(options: YoinkOptions) {
 
         let path = entry.path();
         if path.is_file() {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-            if !include_only.is_empty() && !include_only.contains(&ext.to_string()) {
-                continue;
+            if let Some(ref matcher) = inc_matcher {
+                if !matches!(matcher.matched(path, false), ignore::Match::Whitelist(_)) {
+                    continue;
+                }
             }
 
             let buffer = match fs::read(path) {
@@ -120,7 +134,7 @@ pub fn process_codebase(options: YoinkOptions) {
 
             let lang_tag = get_language_tag(path);
 
-            // Accumulate into buffer instead of printing to stdout
+            // Accumulate into buffer
             let _ = writeln!(output_buffer, "### {}", path_str);
             let _ = writeln!(output_buffer, "```{}", lang_tag);
             let _ = writeln!(output_buffer, "{}", content);

@@ -27,12 +27,17 @@ pub enum EditList {
     IncludeHidden,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum InputPurpose {
     NewProfile,
+    RenameProfile(String),
+    DuplicateProfile(String),
     AddExclude,
     AddIncludeOnly,
     AddIncludeHidden,
+    EditExclude(usize),
+    EditIncludeOnly(usize),
+    EditIncludeHidden(usize),
 }
 
 pub struct App {
@@ -279,8 +284,10 @@ impl App {
             return;
         }
 
-        match self.input_purpose {
-            Some(InputPurpose::NewProfile) => {
+        let purpose = if let Some(p) = self.input_purpose.clone() { p } else { return; };
+
+        match purpose {
+            InputPurpose::NewProfile => {
                 let proj = self.config.projects.entry(self.path.clone()).or_default();
                 if !proj.profiles.contains_key(&val) {
                     proj.profiles
@@ -293,25 +300,72 @@ impl App {
                 }
                 self.mode = AppMode::ProfileList;
             }
-            Some(purpose) => {
+            InputPurpose::RenameProfile(old_name) => {
+                let proj = self.config.projects.entry(self.path.clone()).or_default();
+                if !proj.profiles.contains_key(&val) && old_name != val {
+                    if let Some(prof) = proj.profiles.remove(&old_name) {
+                        proj.profiles.insert(val.clone(), prof);
+                        if proj.bound_profile.as_ref() == Some(&old_name) {
+                            proj.bound_profile = Some(val.clone());
+                        }
+                        self.save();
+                        self.sync_profiles();
+                        if let Some(pos) = self.profiles.iter().position(|p| p == &val) {
+                            self.profile_state.select(Some(pos));
+                        }
+                    }
+                }
+                self.mode = AppMode::ProfileList;
+            }
+            InputPurpose::DuplicateProfile(src_name) => {
+                let proj = self.config.projects.entry(self.path.clone()).or_default();
+                if !proj.profiles.contains_key(&val) {
+                    if let Some(prof) = proj.profiles.get(&src_name).cloned() {
+                        proj.profiles.insert(val.clone(), prof);
+                        self.save();
+                        self.sync_profiles();
+                        if let Some(pos) = self.profiles.iter().position(|p| p == &val) {
+                            self.profile_state.select(Some(pos));
+                        }
+                    }
+                }
+                self.mode = AppMode::ProfileList;
+            }
+            _ => {
                 let mut mutated = false;
-                let mut new_len = 0;
+                let mut new_idx = None;
 
                 if let Some(prof_name) = self.selected_profile_name().cloned() {
                     if let Some(proj) = self.config.projects.get_mut(&self.path) {
                         if let Some(prof) = proj.profiles.get_mut(&prof_name) {
                             let list = match purpose {
-                                InputPurpose::AddExclude => &mut prof.exclude,
-                                InputPurpose::AddIncludeOnly => &mut prof.include_only,
-                                InputPurpose::AddIncludeHidden => &mut prof.include_hidden,
+                                InputPurpose::AddExclude | InputPurpose::EditExclude(_) => &mut prof.exclude,
+                                InputPurpose::AddIncludeOnly | InputPurpose::EditIncludeOnly(_) => &mut prof.include_only,
+                                InputPurpose::AddIncludeHidden | InputPurpose::EditIncludeHidden(_) => &mut prof.include_hidden,
                                 _ => unreachable!(),
                             };
-                            if !list.contains(&val) {
-                                list.push(val);
-                                list.sort();
-                                mutated = true;
+
+                            if let InputPurpose::EditExclude(idx) | InputPurpose::EditIncludeOnly(idx) | InputPurpose::EditIncludeHidden(idx) = purpose {
+                                if idx < list.len() && list[idx] != val {
+                                    let old = list.remove(idx);
+                                    if !list.contains(&val) {
+                                        list.push(val.clone());
+                                        mutated = true;
+                                    } else {
+                                        list.push(old); // duplicate exists, revert
+                                    }
+                                    list.sort();
+                                    new_idx = list.iter().position(|x| x == &val);
+                                }
+                            } else {
+                                // Add logic
+                                if !list.contains(&val) {
+                                    list.push(val.clone());
+                                    list.sort();
+                                    mutated = true;
+                                }
+                                new_idx = list.iter().position(|x| x == &val);
                             }
-                            new_len = list.len();
                         }
                     }
                 }
@@ -319,18 +373,21 @@ impl App {
                 if mutated {
                     self.save();
                 }
-                self.edit_state.select(Some(new_len.saturating_sub(1)));
+                if let Some(idx) = new_idx {
+                    self.edit_state.select(Some(idx));
+                }
                 self.mode = AppMode::EditProfile;
             }
-            None => {}
         }
         self.input.clear();
         self.input_purpose = None;
     }
 
     pub fn cancel_input(&mut self) {
-        self.mode = match self.input_purpose {
-            Some(InputPurpose::NewProfile) => AppMode::ProfileList,
+        self.mode = match &self.input_purpose {
+            Some(InputPurpose::NewProfile)
+            | Some(InputPurpose::RenameProfile(_))
+            | Some(InputPurpose::DuplicateProfile(_)) => AppMode::ProfileList,
             _ => AppMode::EditProfile,
         };
         self.input.clear();
@@ -380,6 +437,20 @@ fn handle_key_events(key: KeyEvent, app: &mut App) {
                 app.mode = AppMode::Input;
                 app.input_purpose = Some(InputPurpose::NewProfile);
             }
+            KeyCode::Char('r') => {
+                if let Some(name) = app.selected_profile_name().cloned() {
+                    app.mode = AppMode::Input;
+                    app.input = name.clone();
+                    app.input_purpose = Some(InputPurpose::RenameProfile(name));
+                }
+            }
+            KeyCode::Char('c') => {
+                if let Some(name) = app.selected_profile_name().cloned() {
+                    app.mode = AppMode::Input;
+                    app.input = format!("{}_copy", name);
+                    app.input_purpose = Some(InputPurpose::DuplicateProfile(name));
+                }
+            }
             KeyCode::Char('d') => app.delete_selected_profile(),
             KeyCode::Char('b') => {
                 if let Some(name) = app.selected_profile_name().cloned() {
@@ -417,6 +488,24 @@ fn handle_key_events(key: KeyEvent, app: &mut App) {
                     EditList::IncludeOnly => Some(InputPurpose::AddIncludeOnly),
                     EditList::IncludeHidden => Some(InputPurpose::AddIncludeHidden),
                 };
+            }
+            KeyCode::Enter | KeyCode::Char('e') => {
+                if let Some(prof_name) = app.selected_profile_name().cloned() {
+                    if let Some(idx) = app.edit_state.selected() {
+                        if let Some(p) = app.config.projects.get(&app.path).and_then(|pc| pc.profiles.get(&prof_name)) {
+                            let (val, purpose) = match app.edit_list {
+                                EditList::Exclude => (p.exclude.get(idx).cloned(), InputPurpose::EditExclude(idx)),
+                                EditList::IncludeOnly => (p.include_only.get(idx).cloned(), InputPurpose::EditIncludeOnly(idx)),
+                                EditList::IncludeHidden => (p.include_hidden.get(idx).cloned(), InputPurpose::EditIncludeHidden(idx)),
+                            };
+                            if let Some(v) = val {
+                                app.mode = AppMode::Input;
+                                app.input = v;
+                                app.input_purpose = Some(purpose);
+                            }
+                        }
+                    }
+                }
             }
             KeyCode::Char('x') => app.delete_selected_edit_item(),
             _ => {}
@@ -607,10 +696,10 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Footer
     let footer_text = match app.mode {
         AppMode::ProfileList => {
-            "[↑/↓] Navigate  [n] New  [d] Delete  [b] Bind  [u] Unbind  [→/e] Edit  [q] Quit"
+            "[↑/↓] Nav  [n] New  [r] Rename  [c] Clone  [d] Del  [b] Bind  [u] Unbind  [→/e] Edit  [q] Quit"
         }
         AppMode::EditProfile => {
-            "[↑/↓] Select  [Tab] Switch List  [a] Add  [x] Delete  [←/Esc] Back"
+            "[↑/↓] Sel  [Tab] Switch  [a] Add  [e/Enter] Edit  [x] Del  [←/Esc] Back"
         }
         AppMode::Input => "[Enter] Save  [Esc] Cancel",
     };
@@ -623,11 +712,16 @@ fn ui(f: &mut Frame, app: &mut App) {
     // Input Popup
     if app.mode == AppMode::Input {
         let area = centered_rect(60, 20, size);
-        let title = match app.input_purpose {
+        let title = match &app.input_purpose {
             Some(InputPurpose::NewProfile) => " New Profile Name ",
+            Some(InputPurpose::RenameProfile(_)) => " Rename Profile ",
+            Some(InputPurpose::DuplicateProfile(_)) => " Clone Profile ",
             Some(InputPurpose::AddExclude) => " Add Exclude ",
             Some(InputPurpose::AddIncludeOnly) => " Add Include Only ",
             Some(InputPurpose::AddIncludeHidden) => " Add Include Hidden ",
+            Some(InputPurpose::EditExclude(_)) => " Edit Exclude ",
+            Some(InputPurpose::EditIncludeOnly(_)) => " Edit Include Only ",
+            Some(InputPurpose::EditIncludeHidden(_)) => " Edit Include Hidden ",
             None => " Input ",
         };
 

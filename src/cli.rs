@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "yoink")]
-#[command(version, about = "Yoink your codebase into stdout for LLMs", long_about = None)]
+#[command(version, about = "Yoink your codebase into clipboard", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -15,7 +15,7 @@ pub struct Cli {
     #[arg(short, long, value_delimiter = ',')]
     pub exclude: Vec<String>,
 
-    /// Only include these file extensions
+    /// Only include files matching these glob patterns
     #[arg(short = 'i', long, value_delimiter = ',')]
     pub include_only: Vec<String>,
 
